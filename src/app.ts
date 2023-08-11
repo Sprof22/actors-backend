@@ -37,11 +37,9 @@ app.get("/actors", async (req: Request, res: Response) => {
     }
   });
   
-  app.get("/actors/:actor_id", async (req: Request, res: Response) => {
-    const actorId = req.params.actor_id; // Get the actor ID from the URL
-    console.log("first", actorId)
-    const cacheKey = `actor:${actorId}`;
-  
+  app.get("/actors/:object_id", async (req: Request, res: Response) => {
+    const objectId = req.params.object_id; // Get the object ID from the URL
+  const cacheKey = `actorByObjectId:${objectId}`;
     try {
       // Check Redis cache
       const cachedData = await redisClient.get(cacheKey);
@@ -50,13 +48,14 @@ app.get("/actors", async (req: Request, res: Response) => {
         console.log("Data fetched from cache.");
         return res.status(200).json(JSON.parse(cachedData));
       } else {
-        const query = `SELECT * FROM actors WHERE actor_id = $1`;
-        const results = await PostgresClient.query(query, [actorId]);
+        const query = `SELECT * FROM actors WHERE objectID = $1`;
+      const results = await PostgresClient.query(query, [objectId]);
         const data = results.rows[0]; // Assuming id is unique and there's only one result
   
         if (!data) {
           return res.status(404).json({ error: "Actor not found" });
         }
+  
   
         // Cache data in Redis
         await redisClient.set(cacheKey, JSON.stringify(data), "EX", 3600); // Cache for 1 hour
@@ -69,17 +68,17 @@ app.get("/actors", async (req: Request, res: Response) => {
     }
   });
 
-  app.delete("/actors/:id", async (req: Request, res: Response) => {
-    const actorId = req.params.id; // Get the actor ID from the URL
-    const cacheKey = `actor:${actorId}`;
+  app.delete("/actors/:object_id", async (req: Request, res: Response) => {
+    const objectId = req.params.object_id; // Get the object ID from the URL
+  const cacheKey = `actorByObjectId:${objectId}`;
   
     try {
       // Delete data from Redis cache
       await redisClient.del(cacheKey);
   
       // Delete data from PostgreSQL database
-      const deleteQuery = `DELETE FROM actors WHERE actor_id = $1`;
-      const deleteResult = await PostgresClient.query(deleteQuery, [actorId]);
+      const deleteQuery = `DELETE FROM actors WHERE objectID = $1`;
+      const deleteResult = await PostgresClient.query(deleteQuery, [objectId]);
   
       if (deleteResult.rowCount === 0) {
         return res.status(404).json({ error: "Actor not found" });
@@ -92,9 +91,9 @@ app.get("/actors", async (req: Request, res: Response) => {
     }
   });
   
-  app.patch("/actors/:id", async (req: Request, res: Response) => {
-    const actorId = req.params.id; // Get the actor ID from the URL
-    const cacheKey = `actor:${actorId}`;
+  app.patch("/actors/:object_id", async (req: Request, res: Response) => {
+    const objectId = req.params.object_id; // Get the object ID from the URL
+  const cacheKey = `actorByObjectId:${objectId}`;
   
     const updatedData = req.body; // Assuming the updated data is sent in the request body
   
@@ -104,16 +103,20 @@ app.get("/actors", async (req: Request, res: Response) => {
   
       // Update data in PostgreSQL database
       const updateQuery = `
-        UPDATE actors
-        SET actor_name = $1, actor_rating = $2, image_path = $3, alternative_name = $4
-        WHERE actor_id = $5
-      `;
+      UPDATE actors
+      SET
+        actor_name = $1,
+        actor_rating = $2,
+        image_path = $3,
+        alternative_name = $4
+      WHERE objectID = $5
+    `;
       const updateResult = await PostgresClient.query(updateQuery, [
         updatedData.actor_name,
         updatedData.actor_rating,
         updatedData.image_path,
         updatedData.alternative_name,
-        actorId
+        objectId
       ]);
   
       if (updateResult.rowCount === 0) {
@@ -127,32 +130,30 @@ app.get("/actors", async (req: Request, res: Response) => {
     }
   });
   
-  app.post("/actors", async (req: Request, res: Response) => {
-    const newActorData = req.body; // Assuming the new actor data is sent in the request body
-  
+  app.post("/actors", async (req, res) => {
     try {
-      // Insert data into PostgreSQL database
+      const data = req.body; // Assuming the request body contains the data you want to insert
+      
       const insertQuery = `
-        INSERT INTO actors (actor_name, actor_rating, image_path, alternative_name)
-        VALUES ($1, $2, $3, $4)
-        RETURNING actor_id
+        INSERT INTO actors (actor_name, actor_rating, image_path, alternative_name, actor_id)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING *;
       `;
-      const insertResult = await PostgresClient.query(insertQuery, [
-        newActorData.actor_name,
-        newActorData.actor_rating,
-        newActorData.image_path,
-        newActorData.alternative_name
-      ]);
-  
-      const newActorId = insertResult.rows[0].actor_id;
-  
-      // Clear Redis cache (optional, if you want to refresh the cached actor list)
-      // You can also invalidate related cache keys if needed
-  
-      return res.status(201).json({ message: "Actor created successfully", actor_id: newActorId });
+      
+      const values = [
+        data.actor_name,
+        data.actor_rating,
+        data.image_path,
+        data.alternative_name,
+        data.actor_id
+      ];
+      
+      const result = await PostgresClient.query(insertQuery, values);
+      
+      return res.status(201).json(result.rows[0]); // Return the inserted data
     } catch (error) {
-      console.error("Error creating actor:", error); // Log the specific error
-      return res.status(500).json({ error: "Could not create actor" });
+      console.error("Error inserting data:", error); // Log the specific error
+      return res.status(500).json({ error: "Could not insert data" });
     }
   });
   

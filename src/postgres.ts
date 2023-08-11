@@ -18,8 +18,8 @@ async function initializeDatabase() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS public.actors (
         objectID serial PRIMARY KEY,
-        name TEXT,
-        rating INT,
+        actor_name TEXT,
+        actor_rating INT,
         image_path TEXT,
         alternative_name TEXT,
         actor_id INT
@@ -29,7 +29,7 @@ async function initializeDatabase() {
     //now we insert data
 
     await client.query(`
-      INSERT INTO actors (name, rating, image_path, alternative_name, actor_id)
+      INSERT INTO actors (actor_name, actor_rating, image_path, alternative_name, actor_id)
       VALUES ('Catherine Missal',4875,'/g3fsRgEoMxaqPayIMtGDWERqJ6A.jpg',NULL,551486300),
 	('Monica Bellucci',3956,'/z3sLuRKP7hQVrvSTsqdLjGSldwG.jpg','Monica Anna Maria Bellucci',551486310),
 	('Michael Doven',2647,'/fkHxoBAvAkqHxzoP1ukcbPnaaUi.jpg',NULL,551486320),
