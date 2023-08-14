@@ -11,13 +11,22 @@ export const postgresConfig = new Client({
 
 export const client = new Client(postgresConfig);
 
+export const postgresConfigWithoutDB = {
+	user: "postgres",
+	host: "localhost",
+	password: "12345",
+	port: 5432,
+  };
+  
+  const clientWithoutDB = new Client(postgresConfigWithoutDB);
+
 const algoliaAppID = "SHITSH8101";
 const algoliaAPIKey = "5e71825b63c0e3a3e6f2f1649f1fd870";
 const algoliaIndexName = "actors"; // Name of the index
 
 // Initialize Algolia client
 const algoliaClient = algoliasearch(algoliaAppID, algoliaAPIKey);
-const algoliaIndex = algoliaClient.initIndex(algoliaIndexName);
+export const algoliaIndex = algoliaClient.initIndex(algoliaIndexName);
 
 
 // client.connect(function (err: any) {
@@ -30,19 +39,32 @@ const algoliaIndex = algoliaClient.initIndex(algoliaIndexName);
 async function initializeDatabase() {
   try {
 	
+	await clientWithoutDB.connect();
+
+	  // Check if the database "actors" already exists
+	  const databaseExistsQuery = "SELECT datname FROM pg_database WHERE datname = 'actors'";
+	  const result = await clientWithoutDB.query(databaseExistsQuery);
+
+	   if (result.rowCount === 0) {
+      // Create the database if it doesn't exist
+      await clientWithoutDB.query("CREATE DATABASE actors");
+    }
+
+    await clientWithoutDB.end(); // Close the connection without a database
+    
+    // Connect using the full configuration
+    await client.connect();
+
 	  // Clear Algolia index before pushing new data
 	  const algoliaClearResponse = await algoliaIndex.clearObjects();
 	  console.log('Cleared Algolia index:', algoliaClearResponse);
-	  
-	  await client.connect();
-    
 
 	  // Drop the table if it exists
 	  await client.query('DROP TABLE IF EXISTS public.actors');
 
 
 	  //create table
-     await client.query(`
+	  await client.query(`
       CREATE TABLE public.actors (
         objectID serial PRIMARY KEY,
         actor_name TEXT,
@@ -51,14 +73,13 @@ async function initializeDatabase() {
         alternative_name TEXT,
         actor_id INT
       );
+      ALTER SEQUENCE actors_objectid_seq RESTART WITH 1;
     `);
-	    // Set the starting value for the sequence
-		await client.query('ALTER SEQUENCE actors_objectid_seq RESTART WITH 1');
 
 		console.log('Database table "actors" created');
 	
 		// Call the function to insert data after table creation
-		insertData();
+	await insertData();
   } catch (error) {
     console.error('Error initializing database:', error);
   } 

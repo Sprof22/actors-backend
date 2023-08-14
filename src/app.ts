@@ -1,6 +1,6 @@
 import express, {Request, Response} from "express";
 import cors from "cors";
-import {client as PostgresClient} from "./postgres"
+import { client as PostgresClient, algoliaIndex } from "./postgres"; // Import the algoliaIndex object
 import redisClient from "./redisClient"
 const app = express();
 app.use(express.json());
@@ -69,8 +69,8 @@ app.get("/actors", async (req: Request, res: Response) => {
   });
 
   app.delete("/actors/:object_id", async (req: Request, res: Response) => {
-    const objectId = req.params.object_id; // Get the object ID from the URL
-  const cacheKey = `actorByObjectId:${objectId}`;
+    const objectId = req.params.object_id;
+    const cacheKey = `actorByObjectId:${objectId}`;
   
     try {
       // Delete data from Redis cache
@@ -84,22 +84,25 @@ app.get("/actors", async (req: Request, res: Response) => {
         return res.status(404).json({ error: "Actor not found" });
       }
   
+      // Delete data from Algolia index
+      await algoliaIndex.deleteObject(objectId);
+  
       return res.status(200).json({ message: "Actor deleted successfully" });
     } catch (error) {
-      console.error("Error deleting data:", error); // Log the specific error
+      console.error("Error deleting data:", error);
       return res.status(500).json({ error: "Could not delete actor" });
     }
   });
   
   app.patch("/actors/:object_id", async (req: Request, res: Response) => {
-    const objectId = req.params.object_id; // Get the object ID from the URL
-  const cacheKey = `actorByObjectId:${objectId}`;
+    const objectId = req.params.object_id;
+    const cacheKey = `actorByObjectId:${objectId}`;
   
-    const updatedData = req.body; // Assuming the updated data is sent in the request body
+    const updatedData = req.body;
   
     try {
       // Update data in Redis cache
-      await redisClient.del(cacheKey); // Delete old cached data
+      await redisClient.del(cacheKey);
   
       // Update data in PostgreSQL database
       const updateQuery = `
@@ -123,23 +126,27 @@ app.get("/actors", async (req: Request, res: Response) => {
         return res.status(404).json({ error: "Actor not found" });
       }
   
+      // Update data in Algolia index
+      await algoliaIndex.partialUpdateObject({
+        objectID: objectId,
+        ...updatedData,
+      });
+  
       return res.status(200).json({ message: "Actor updated successfully" });
     } catch (error) {
-      console.error("Error updating data:", error); // Log the specific error
+      console.error("Error updating data:", error);
       return res.status(500).json({ error: "Could not update actor" });
     }
   });
   
   app.post("/actors", async (req, res) => {
     try {
-      const data = req.body; // Assuming the request body contains the data you want to insert
-      
+      const data = req.body;
       const insertQuery = `
         INSERT INTO actors (actor_name, actor_rating, image_path, alternative_name, actor_id)
         VALUES ($1, $2, $3, $4, $5)
         RETURNING *;
       `;
-      
       const values = [
         data.actor_name,
         data.actor_rating,
@@ -147,12 +154,17 @@ app.get("/actors", async (req: Request, res: Response) => {
         data.alternative_name,
         data.actor_id
       ];
-      
       const result = await PostgresClient.query(insertQuery, values);
-      
-      return res.status(201).json(result.rows[0]); // Return the inserted data
+  
+      // Push data to Algolia index
+      const algoliaResponse = await algoliaIndex.saveObject({
+        objectID: result.rows[0].objectid,
+        ...data,
+      });
+  
+      return res.status(201).json(result.rows[0]);
     } catch (error) {
-      console.error("Error inserting data:", error); // Log the specific error
+      console.error("Error inserting data:", error);
       return res.status(500).json({ error: "Could not insert data" });
     }
   });
